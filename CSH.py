@@ -19,7 +19,7 @@ class CSH(QWidget):
     def create_tables(self):
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS counselor(
-            counselor_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            counselor_id INTEGER PRIMARY KEY,
             counselor_first_name VARCHAR,
             counselor_last_name VARCHAR,
             counselor_program VARCHAR
