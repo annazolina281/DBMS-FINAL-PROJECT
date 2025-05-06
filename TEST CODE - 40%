@@ -1,0 +1,215 @@
+import sys
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
+    QStackedWidget, QLineEdit, QComboBox, QMessageBox, QInputDialog, QHBoxLayout
+)
+from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt, QDateTime
+
+# Student database (ID: (Full Name, Department))
+student_data = {
+    "2310845": ("Balderama, Aaron Paulo V.", "Computer Engineering"),
+    "2310844": ("Estabillo, Andrei Migui", "Mechanical Engineering"),
+    "2310841": ("Gob, Mark Jeonel Kenn E.", "Architecture"),
+    "2310842": ("Paala, Anton", "Electronics Engineering"),
+    "2310843": ("Zolina, Anna Marie L.", "Electrical Engineering"),
+}
+
+# Track login state
+logged_in_students = {}
+
+class MainMenu(QWidget):
+    def __init__(self, stacked_widget, form_page):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.form_page = form_page
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        title = QLabel("COMMUNITY SERVICE HOURS")
+        title.setFont(QFont("Arial", 28, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+
+        student_btn = QPushButton("STUDENT")
+        admin_btn = QPushButton("ADMIN")
+        counselor_btn = QPushButton("COUNSELOR")
+
+        for btn in [student_btn, admin_btn, counselor_btn]:
+            btn.setFixedSize(250, 60)
+            btn.setStyleSheet("font-size: 18px; border: 2px solid black; background-color: none;")
+
+        student_btn.clicked.connect(self.select_student)
+        admin_btn.clicked.connect(self.check_admin)
+        counselor_btn.clicked.connect(self.select_counselor)
+
+        layout.addWidget(title)
+        layout.addStretch()
+        layout.addWidget(student_btn, alignment=Qt.AlignCenter)
+        layout.addWidget(admin_btn, alignment=Qt.AlignCenter)
+        layout.addWidget(counselor_btn, alignment=Qt.AlignCenter)
+        layout.addStretch()
+
+        self.setLayout(layout)
+
+    def select_student(self):
+        self.form_page.set_mode("student")
+        self.stacked_widget.setCurrentIndex(1)
+
+    def select_counselor(self):
+        self.form_page.set_mode("counselor")
+        self.stacked_widget.setCurrentIndex(1)
+
+    def check_admin(self):
+        id_text, ok1 = QInputDialog.getText(self, "Admin Login", "Enter Admin ID:")
+        pw_text, ok2 = QInputDialog.getText(self, "Admin Login", "Enter Password:", QLineEdit.Password)
+        if ok1 and ok2 and id_text == "admin" and pw_text == "kenngob123":
+            self.form_page.set_mode("admin")
+            self.stacked_widget.setCurrentIndex(1)
+        else:
+            QMessageBox.warning(self, "Access Denied", "Incorrect ID or password.")
+
+class FormPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.mode = None
+        self.stacked_widget = stacked_widget
+        self.init_ui()
+
+    def init_ui(self):
+        self.layout = QVBoxLayout()
+        self.setStyleSheet("background-color: none;")
+
+        self.title = QLabel("")
+        self.title.setFont(QFont("Arial", 24, QFont.Bold))
+        self.title.setAlignment(Qt.AlignCenter)
+
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Enter Student Number")
+        self.name_input.setStyleSheet("border: 2px solid black; padding: 5px;")
+
+        self.fullname_input = QLineEdit()
+        self.fullname_input.setPlaceholderText("Full Name (hidden)")
+        self.fullname_input.setStyleSheet("border: 2px solid black; padding: 5px;")
+        self.fullname_input.hide()
+
+        self.first_name_input = QLineEdit()
+        self.last_name_input = QLineEdit()
+        self.department_input = QComboBox()
+        self.department_input.addItems(["", "CPE", "CE", "EE", "IE", "ME", "EDUC"])
+        self.counselor_input = QLineEdit()
+
+        for w in [self.first_name_input, self.last_name_input, self.counselor_input]:
+            w.setStyleSheet("border: 2px solid black; padding: 5px;")
+
+        self.okay_button = QPushButton("OKAY")
+        self.back_button = QPushButton("BACK")
+        for b in [self.okay_button, self.back_button]:
+            b.setStyleSheet("border: 2px solid black; background-color: none;")
+            b.setFixedHeight(40)
+
+        self.okay_button.clicked.connect(self.submit_data)
+        self.back_button.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        self.layout.addSpacing(50)
+        self.layout.addWidget(self.title)
+        self.layout.addWidget(self.name_input)
+        self.layout.addWidget(self.fullname_input)
+        self.layout.addWidget(self.first_name_input)
+        self.layout.addWidget(self.last_name_input)
+        self.layout.addWidget(self.department_input)
+        self.layout.addWidget(self.counselor_input)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.okay_button)
+        btn_layout.addWidget(self.back_button)
+        self.layout.addLayout(btn_layout)
+
+        self.setLayout(self.layout)
+        self.set_mode("student")
+
+    def set_mode(self, mode):
+        self.mode = mode
+        self.title.setText(f"{mode.upper()} LOGIN")
+
+        self.name_input.show()
+        self.fullname_input.hide()
+        self.first_name_input.hide()
+        self.last_name_input.hide()
+        self.department_input.hide()
+        self.counselor_input.hide()
+
+        if mode == "admin":
+            self.first_name_input.setPlaceholderText("First Name")
+            self.last_name_input.setPlaceholderText("Last Name")
+            self.counselor_input.setPlaceholderText("Counselor ID")
+            self.first_name_input.show()
+            self.last_name_input.show()
+            self.department_input.show()
+            self.counselor_input.show()
+        elif mode == "counselor":
+            self.name_input.setPlaceholderText("Enter Counselor ID")
+        elif mode == "student":
+            self.name_input.setPlaceholderText("Enter Student Number")
+
+    def submit_data(self):
+        if self.mode == "student":
+            student_id = self.name_input.text().strip()
+            if student_id not in student_data:
+                QMessageBox.warning(self, "Not Found", "Student not found.")
+                return
+
+            full_name, dept = student_data[student_id]
+
+            if student_id in logged_in_students:
+                confirm = QMessageBox.question(
+                    self, "Sign Out",
+                    f"{full_name} is already logged in. \n Are you sure you want to time out?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if confirm == QMessageBox.Yes:
+                    time_out = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                    QMessageBox.information(self, "Time-Out", f"Student: {full_name}\nTime-Out: {time_out}")
+                    del logged_in_students[student_id]
+            else:
+                time_in = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                logged_in_students[student_id] = time_in
+                QMessageBox.information(self, "Time-In", f"Student: {full_name}\nTime-In: {time_in}")
+
+        elif self.mode == "counselor":
+            counselor_id = self.name_input.text().strip()
+            if not counselor_id:
+                QMessageBox.warning(self, "Missing Info", "Please enter your Counselor ID.")
+                return
+            QMessageBox.information(self, "Counselor Info", f"Counselor ID: {counselor_id}")
+
+        elif self.mode == "admin":
+            sid = self.name_input.text().strip()
+            fname = self.first_name_input.text().strip()
+            lname = self.last_name_input.text().strip()
+            dept = self.department_input.currentText()
+            counselor_id = self.counselor_input.text().strip()
+            if not sid or not fname or not lname or not dept or not counselor_id:
+                QMessageBox.warning(self, "Missing Info", "Please complete all fields.")
+                return
+            QMessageBox.information(self, "Update Successful", f"updated for student {sid}:\n{fname} {lname}, {dept}, Counselor: {counselor_id}")
+
+def main():
+    app = QApplication(sys.argv)
+    stacked_widget = QStackedWidget()
+
+    form_page = FormPage(stacked_widget)
+    main_menu = MainMenu(stacked_widget, form_page)
+
+    stacked_widget.addWidget(main_menu)
+    stacked_widget.addWidget(form_page)
+
+    stacked_widget.setFixedSize(800, 600)
+    stacked_widget.setCurrentIndex(0)
+    stacked_widget.show()
+
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
