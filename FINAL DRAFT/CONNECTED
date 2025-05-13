@@ -1,0 +1,176 @@
+import sys
+import pyodbc
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QVBoxLayout, QHBoxLayout, QMessageBox, QStackedWidget
+
+# SQL Server connection setup
+def connect_to_database():
+    try:
+        conn = pyodbc.connect(
+            r'DRIVER={ODBC Driver 17 for SQL Server};'
+            r'SERVER=LAPTOP-VUO9LL9V\SQLEXPRESS01;'
+            r'DATABASE=CommunityHoursDB;'
+            r'Trusted_Connection=yes;'
+        )
+        return conn
+    except Exception as e:
+        print(f"❌ Failed to connect: {e}")
+        return None
+
+# Base Window
+class RoleSelection(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Select Role:"))
+
+        student_btn = QPushButton("Student")
+        counselor_btn = QPushButton("Counselor")
+        admin_btn = QPushButton("Admin")
+
+        student_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(1))
+        counselor_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(2))
+        admin_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(3))
+
+        layout.addWidget(student_btn)
+        layout.addWidget(counselor_btn)
+        layout.addWidget(admin_btn)
+        self.setLayout(layout)
+
+# Student Page
+class StudentPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+
+        self.id_input = QLineEdit()
+        self.id_input.setPlaceholderText("Enter Student Number")
+        submit_btn = QPushButton("Submit")
+        back_btn = QPushButton("Back")
+
+        submit_btn.clicked.connect(self.login)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        layout.addWidget(QLabel("Student Login"))
+        layout.addWidget(self.id_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def login(self):
+        student_id = self.id_input.text()
+        conn = connect_to_database()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM students WHERE student_num = ?", student_id)
+            result = cursor.fetchone()
+            if result:
+                QMessageBox.information(self, "Success", "Student logged in successfully!")
+            else:
+                QMessageBox.warning(self, "Failed", "Invalid student number.")
+            conn.close()
+
+# Counselor Page
+class CounselorPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+
+        self.id_input = QLineEdit()
+        self.id_input.setPlaceholderText("Enter Counselor ID")
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText("Enter Password")
+        self.pass_input.setEchoMode(QLineEdit.Password)
+
+        submit_btn = QPushButton("Login")
+        back_btn = QPushButton("Back")
+
+        submit_btn.clicked.connect(self.login)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        layout.addWidget(QLabel("Counselor Login"))
+        layout.addWidget(self.id_input)
+        layout.addWidget(self.pass_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def login(self):
+        counselor_id = self.id_input.text()
+        password = self.pass_input.text()
+        conn = connect_to_database()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM counselors WHERE counselor_id = ? AND password = ?", (counselor_id, password))
+            result = cursor.fetchone()
+            if result:
+                QMessageBox.information(self, "Success", "Counselor logged in successfully!")
+            else:
+                QMessageBox.warning(self, "Failed", "Invalid credentials.")
+            conn.close()
+
+# Admin Page
+class AdminPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+
+        self.id_input = QLineEdit()
+        self.id_input.setPlaceholderText("Enter Admin ID")
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Enter Admin Name")
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText("Enter Password")
+        self.pass_input.setEchoMode(QLineEdit.Password)
+
+        submit_btn = QPushButton("Login")
+        back_btn = QPushButton("Back")
+
+        submit_btn.clicked.connect(self.login)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        layout.addWidget(QLabel("Admin Login"))
+        layout.addWidget(self.id_input)
+        layout.addWidget(self.name_input)
+        layout.addWidget(self.pass_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def login(self):
+        admin_id = self.id_input.text()
+        admin_name = self.name_input.text()
+        password = self.pass_input.text()
+        conn = connect_to_database()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM admins WHERE admin_id = ? AND admin_name = ? AND password = ?", (admin_id, admin_name, password))
+            result = cursor.fetchone()
+            if result:
+                QMessageBox.information(self, "Success", "Admin logged in successfully!")
+            else:
+                QMessageBox.warning(self, "Failed", "Invalid credentials.")
+            conn.close()
+
+# Main Application
+app = QApplication(sys.argv)
+stacked_widget = QStackedWidget()
+
+role_selection = RoleSelection(stacked_widget)
+student_page = StudentPage(stacked_widget)
+counselor_page = CounselorPage(stacked_widget)
+admin_page = AdminPage(stacked_widget)
+
+stacked_widget.addWidget(role_selection)  # index 0
+stacked_widget.addWidget(student_page)    # index 1
+stacked_widget.addWidget(counselor_page)  # index 2
+stacked_widget.addWidget(admin_page)      # index 3
+
+stacked_widget.setFixedSize(400, 300)
+stacked_widget.setWindowTitle("Community Hours System")
+stacked_widget.show()
+
+sys.exit(app.exec_())
