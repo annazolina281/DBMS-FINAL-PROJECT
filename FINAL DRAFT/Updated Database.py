@@ -52,6 +52,7 @@ def create_tables():
         BEGIN
             CREATE TABLE counselors (
                 counselor_id VARCHAR(20) PRIMARY KEY,
+                name VARCHAR(30),
                 department_1 VARCHAR(10),
                 department_2 VARCHAR(10),
                 password VARCHAR(50)
@@ -317,9 +318,109 @@ class StudentRecords(QWidget):
                            """, (studentno, student_fname, student_lname, student_prog))
             conn.commit()
             QMessageBox.information(self, "Success", "Student added successfully!")
+            self.stacked_widget.setCurrentIndex(4)
             conn.close()
+
+class CounselorRecords(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
         
-    
+        self.counselor_id = QLineEdit()
+        self.counselor_id.setPlaceholderText("Enter Counselor ID")
+        self.name = QLineEdit()
+        self.name.setPlaceholderText("Enter Full Name")
+        self.dept_1 = QLineEdit()
+        self.dept_1.setPlaceholderText("Enter Department 1")
+        self.dept_2 = QLineEdit()
+        self.dept_2.setPlaceholderText("Enter Department 2")
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText("Enter Password")
+        self.pass_input.setEchoMode(QLineEdit.Password)
+        
+        
+        submit_btn = QPushButton("Submit")
+        back_btn = QPushButton("Back")
+        
+        submit_btn.clicked.connect(self.add_counselor)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
+        
+        layout.addWidget(QLabel("Counselor Records"))
+        layout.addWidget(self.counselor_id)
+        layout.addWidget(self.name)
+        layout.addWidget(self.dept_1)
+        layout.addWidget(self.dept_2)
+        layout.addWidget(self.pass_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+                                 
+        
+    def add_counselor(self):
+        couns_id = self.counselor_id.text()
+        couns_name = self.name.text()
+        couns_dept1 = self.dept_1.text()
+        couns_dept2 = self.dept_2.text()
+        password = self.pass_input.text()
+        conn = connect_to_community_db()
+        create_tables()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute(""" INSERT INTO counselors 
+                           (counselor_id, name, department_1, department_2, password)
+                           VALUES (?, ?, ?, ?, ?)
+                           """, (couns_id, couns_name, couns_dept1, couns_dept2, password))
+            conn.commit()
+            QMessageBox.information(self, "Success", "Counselor added successfully!")
+            self.stacked_widget.setCurrentIndex(4)
+            conn.close()
+            
+class ViolationRecords(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+        
+        self.violation_id = QLineEdit()
+        self.violation_id.setPlaceholderText("Enter Violation ID")
+        self.violation_name = QLineEdit()
+        self.violation_name.setPlaceholderText("Enter Violation Name")
+        self.community_hours= QLineEdit()
+        self.community_hours.setPlaceholderText("Enter Community Hours")
+        
+        
+        submit_btn = QPushButton("Submit")
+        back_btn = QPushButton("Back")
+        
+        submit_btn.clicked.connect(self.add_violation)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
+        
+        layout.addWidget(QLabel("Violation Records"))
+        layout.addWidget(self.violation_id)
+        layout.addWidget(self.violation_name)
+        layout.addWidget(self.community_hours)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+                                 
+        
+    def add_violation(self):
+        viol_id = self.violation_id.text()
+        viol_name = self.violation_name.text()
+        comm_hours = self.community_hours.text()
+        conn = connect_to_community_db()
+        create_tables()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute(""" INSERT INTO violations 
+                           (violation_id, violation_name, community_hours)
+                           VALUES (?, ?, ?)
+                           """, (viol_id, viol_name, comm_hours))
+            conn.commit()
+            QMessageBox.information(self, "Success", "Violation added successfully!")
+            self.stacked_widget.setCurrentIndex(4)
+            conn.close()
 
 # Main Application
 app = QApplication(sys.argv)
@@ -331,8 +432,9 @@ counselor_page = CounselorPage(stacked_widget)
 admin_page = AdminPage(stacked_widget)
 admin_ui = AdminMenu(stacked_widget)
 student_record = StudentRecords(stacked_widget)
-# counselor_record = CounselorRecords(stacked_widget)
-# violations_record = ViolationRecords(stacked_widget)
+counselor_record = CounselorRecords(stacked_widget)
+violations_record = ViolationRecords(stacked_widget)
+# csh_record = CommunityHours(stacked_widget)
 
 
 stacked_widget.addWidget(role_selection)  # index 0
@@ -341,8 +443,8 @@ stacked_widget.addWidget(counselor_page)  # index 2
 stacked_widget.addWidget(admin_page)      # index 3
 stacked_widget.addWidget(admin_ui)        # index 4
 stacked_widget.addWidget(student_record)  # index 5
-# stacked_widget.addWidget(counselor_record) index 6
-# stacked_widget.addWidget(violations_record) index 7
+stacked_widget.addWidget(counselor_record) # index 6
+stacked_widget.addWidget(violations_record) # index 7
 # stacked_widget.addWidget(csh_record) index 8
 
 stacked_widget.setFixedSize(400, 300)
