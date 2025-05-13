@@ -254,6 +254,7 @@ class AdminMenu(QWidget):
         student_records_btn = QPushButton("Edit Student Records")
         counselor_records_btn = QPushButton("Edit Counselor Records")
         violations_records_btn = QPushButton("Edit Violation Records")
+        student_violations_btn = QPushButton("Edit Student Violations Record")
         csh_records_btn = QPushButton("Edit Community Hours Record")
         back_btn = QPushButton("Back")
         
@@ -261,7 +262,8 @@ class AdminMenu(QWidget):
         student_records_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(5))
         counselor_records_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(6))
         violations_records_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(7))
-        csh_records_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(8))
+        student_violations_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(8))
+        csh_records_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(9))
         back_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(0))
         layout.addWidget(student_records_btn)
         layout.addWidget(counselor_records_btn)
@@ -432,17 +434,23 @@ class StudentViolations(QWidget):
         self.sv_id.setPlaceholderText("Enter S.V ID")
         self.student_number = QLineEdit()
         self.student_number.setPlaceholderText("Enter Student Number")
-        self.first_offense_id_= QLineEdit()
+        self.first_offense_id= QLineEdit()
         self.first_offense_id.setPlaceholderText("Enter First Offense")
+        self.second_offense_id = QLineEdit()
+        self.second_offense_id.setPlaceholderText("Enter Second Offense")
+        self.third_offense_id = QLineEdit()
+        self.third_offense_id.setPlaceholderText("Enter First Offense")
+        self.second_offense_id
+        
         
         
         submit_btn = QPushButton("Submit")
         back_btn = QPushButton("Back")
         
-        submit_btn.clicked.connect(self.add_violation)
+        submit_btn.clicked.connect(self.add_studentviolation)
         back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
         
-        layout.addWidget(QLabel("Violation Records"))
+        layout.addWidget(QLabel("Student Violation Records"))
         layout.addWidget(self.violation_id)
         layout.addWidget(self.violation_name)
         layout.addWidget(self.community_hours)
@@ -451,7 +459,7 @@ class StudentViolations(QWidget):
         self.setLayout(layout)
                                  
         
-    def add_violation(self):
+    def add_studentviolation(self):
         viol_id = self.violation_id.text()
         viol_name = self.violation_name.text()
         comm_hours = self.community_hours.text()
@@ -481,6 +489,7 @@ admin_ui = AdminMenu(stacked_widget)
 student_record = StudentRecords(stacked_widget)
 counselor_record = CounselorRecords(stacked_widget)
 violations_record = ViolationRecords(stacked_widget)
+student_violations = StudentViolations(stacked_widget)
 # csh_record = CommunityHours(stacked_widget)
 
 
