@@ -30,9 +30,10 @@ def create_database():
 def connect_to_community_db():
     conn_str = (
         r'DRIVER={ODBC Driver 17 for SQL Server};'
-        r'SERVER=DESKTOP-PSJGEEF\SQLEXPRESS;'
+        r'SERVER=DESKTOP-PSJGEEF;'
         r'DATABASE=CommunityHoursDB;'
-        r'Trusted_Connection=yes;'
+        r'UID=admin;'
+        r'PWD=1234'
     )
     try:
         return pyodbc.connect(conn_str, autocommit=True)
@@ -45,44 +46,71 @@ def create_tables():
     conn = connect_to_community_db()
     if conn:
         cursor = conn.cursor()
+
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS counselors (
-            counselor_id VARCHAR(20) PRIMARY KEY,
-            department_1 VARCHAR(10),
-            department_2 VARCHAR(10),
-            password VARCHAR(50)
-            )""")
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'counselors')
+        BEGIN
+            CREATE TABLE counselors (
+                counselor_id VARCHAR(20) PRIMARY KEY,
+                department_1 VARCHAR(10),
+                department_2 VARCHAR(10),
+                password VARCHAR(50)
+            )
+        END
+        """)
+
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            student_num INT PRIMARY KEY,
-            first_name VARCHAR(50),
-            last_name VARCHAR(50),
-            program VARCHAR(50)
-            )""")
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'students')
+        BEGIN
+            CREATE TABLE students (
+                student_num INT PRIMARY KEY,
+                first_name VARCHAR(50),
+                last_name VARCHAR(50),
+                program VARCHAR(50)
+            )
+        END
+        """)
+
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS violations(
-            violation_id INT PRIMARY KEY IDENTITY(1,1),
-            violation_name VARCHAR(100),
-            community_hours INT
-            )""")
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'violations')
+        BEGIN
+            CREATE TABLE violations (
+                violation_id INT PRIMARY KEY IDENTITY(1,1),
+                violation_name VARCHAR(100),
+                community_hours INT
+            )
+        END
+        """)
+
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS student_violations(
-            sv_id INT PRIMARY KEY IDENTITY(1,1),
-            student_number INT FOREIGN KEY REFERENCES students(student_num),
-            first_offense_id INT FOREIGN KEY REFERENCES violations(violation_id),
-            second_offense_id INT FOREIGN KEY REFERENCES violations(violation_id),
-            third_offense_id INT FOREIGN KEY REFERENCES violations(violation_id)
-            )""")
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'student_violations')
+        BEGIN
+            CREATE TABLE student_violations (
+                sv_id INT PRIMARY KEY IDENTITY(1,1),
+                student_number INT FOREIGN KEY REFERENCES students(student_num),
+                first_offense_id INT FOREIGN KEY REFERENCES violations(violation_id),
+                second_offense_id INT FOREIGN KEY REFERENCES violations(violation_id),
+                third_offense_id INT FOREIGN KEY REFERENCES violations(violation_id)
+            )
+        END
+        """)
+
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS csh(
-            sv_id INT FOREIGN KEY REFERENCES student_violations(sv_id),
-            time_in DATETIME,
-            time_out DATETIME,
-            counselor_id VARCHAR(20) FOREIGN KEY REFERENCES counselors(counselor_id),
-            remarks TEXT
-            )""")
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'csh')
+        BEGIN
+            CREATE TABLE csh (
+                sv_id INT FOREIGN KEY REFERENCES student_violations(sv_id),
+                time_in DATETIME,
+                time_out DATETIME,
+                counselor_id VARCHAR(20) FOREIGN KEY REFERENCES counselors(counselor_id),
+                remarks TEXT
+            )
+        END
+        """)
+
         conn.commit()
-    
+        conn.close()
+
 
 # Base Window
 class RoleSelection(QWidget):
@@ -284,8 +312,8 @@ class StudentRecords(QWidget):
         if conn:
             cursor = conn.cursor()
             cursor.execute(""" INSERT INTO students 
-                           (student_num, first_name, last_name)
-                           VALUES (?, ?, ?, ?),
+                           (student_num, first_name, last_name, program)
+                           VALUES (?, ?, ?, ?)
                            """, (studentno, student_fname, student_lname, student_prog))
             conn.commit()
             QMessageBox.information(self, "Success", "Student added successfully!")
