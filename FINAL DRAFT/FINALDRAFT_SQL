@@ -1,0 +1,78 @@
+-- Create new database
+DROP DATABASE IF EXISTS CommunityHoursDB;
+GO
+
+CREATE DATABASE CommunityHoursDB;
+GO
+
+USE CommunityHoursDB;
+GO
+
+-- Admins Table
+CREATE TABLE admins (
+    admin_id VARCHAR(20) PRIMARY KEY,
+    admin_name VARCHAR(100),
+    password VARCHAR(50)
+);
+
+INSERT INTO admins (admin_id, admin_name, password) VALUES
+('2310843', 'Anna Marie L. Zolina', 'TIPQC1969'),
+('2311002', 'Anton Paala', 'TIPQC1969'),
+('2312176', 'Andrei Migui Estabillo', 'TIPQC1969'),
+('2311819', 'Mark Jeonel Kenn Gob', 'TIPQC1969'),
+('2311918', 'Aaron Paulo Balderama', 'TIPQC1969');
+
+-- Counselors Table
+CREATE TABLE counselors (
+    counselor_id VARCHAR(20) PRIMARY KEY,
+    department_1 VARCHAR(10),
+    department_2 VARCHAR(10),
+    password VARCHAR(50)
+);
+
+INSERT INTO counselors VALUES
+('2310863', 'EE', 'CPE', 'TIPQC1969'),
+('2187365', 'ECE', 'IT', 'TIPQC1969'),
+('2216562', 'CE', 'ARCH', 'TIPQC1969'),
+('2138963', 'ENSE', 'ME', 'TIPQC1969'),
+('2112983', 'EDUC', 'ACC', 'TIPQC1969');
+
+-- Students Table
+CREATE TABLE students (
+    student_num INT PRIMARY KEY,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    program VARCHAR(50)
+);
+
+-- Violations Table
+CREATE TABLE violations (
+    violation_id INT PRIMARY KEY IDENTITY(1,1),
+    violation_name VARCHAR(100),
+    community_hours INT
+);
+
+INSERT INTO violations (violation_name, community_hours) VALUES
+('Cutting Class', 2),
+('Disrespect', 3),
+('Not in Uniform', 1),
+('Littering', 2),
+('Late Submission', 1);
+
+-- Student Violations Table
+CREATE TABLE student_violations (
+    sv_id INT PRIMARY KEY IDENTITY(1,1),
+    student_number INT FOREIGN KEY REFERENCES students(student_num),
+    first_offense_id INT FOREIGN KEY REFERENCES violations(violation_id),
+    second_offense_id INT,
+    third_offense_id INT
+);
+
+-- Community Service Hours Table
+CREATE TABLE csh (
+    sv_id INT FOREIGN KEY REFERENCES student_violations(sv_id),
+    time_in DATETIME,
+    time_out DATETIME,
+    counselor_id VARCHAR(20) FOREIGN KEY REFERENCES counselors(counselor_id),
+    remarks TEXT
+);
