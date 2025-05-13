@@ -363,7 +363,6 @@ class CounselorMenu(QWidget):
         self.departments = departments if isinstance(departments, list) else [departments]
 
         layout = QVBoxLayout()
-
         self.students_btn = QPushButton("View Students")
         self.violations_btn = QPushButton("View Violations")
         self.csh_btn = QPushButton("View Community Hours")
@@ -374,7 +373,7 @@ class CounselorMenu(QWidget):
         self.csh_btn.clicked.connect(self.show_csh_table)
         back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
 
-        layout.addWidget(QLabel(f"Counselor View - Departments: {', '.join(self.departments)}"))
+        layout.addWidget(QLabel(f"Counselor View - Programs: {', '.join(self.departments)}"))
         layout.addWidget(self.students_btn)
         layout.addWidget(self.violations_btn)
         layout.addWidget(self.csh_btn)
@@ -390,39 +389,65 @@ class CounselorMenu(QWidget):
         conn.close()
         return headers, data
 
-    def fetch_student_ids(self):
-        query = f"SELECT student_id FROM students WHERE department IN ({','.join(['?'] * len(self.departments))})"
+    def fetch_student_nums(self):
+        query = f"SELECT student_num FROM students WHERE program IN ({','.join(['?'] * len(self.departments))})"
         conn = connect_to_community_db()
         cursor = conn.cursor()
         cursor.execute(query, self.departments)
-        ids = [row[0] for row in cursor.fetchall()]
+        student_nums = [row[0] for row in cursor.fetchall()]
         conn.close()
-        return ids
+        return student_nums
 
     def show_students_table(self):
-        query = f"SELECT * FROM students WHERE department IN ({','.join(['?'] * len(self.departments))})"
+        query = f"SELECT * FROM students WHERE program IN ({','.join(['?'] * len(self.departments))})"
         headers, data = self.fetch_data(query, self.departments)
-        self.show_table("Students", headers, data)
+        self.display_table_page("Students", headers, data)
 
     def show_violations_table(self):
-        student_ids = self.fetch_student_ids()
-        if not student_ids:
-            QMessageBox.information(self, "Violations", "No violations found.")
+        student_nums = self.fetch_student_nums()
+        if not student_nums:
+            QMessageBox.information(self, "Violations", "No student violations found.")
             return
-        query = f"SELECT * FROM violations WHERE student_id IN ({','.join(['?'] * len(student_ids))})"
-        headers, data = self.fetch_data(query, student_ids)
-        self.show_table("Violations", headers, data)
+
+        query = f"""
+            SELECT sv.sv_id, sv.student_number, s.first_name, s.last_name,
+                   v1.violation_name AS first_offense,
+                   v2.violation_name AS second_offense,
+                   v3.violation_name AS third_offense
+            FROM student_violations sv
+            JOIN students s ON sv.student_number = s.student_num
+            LEFT JOIN violations v1 ON sv.first_offense_id = v1.violation_id
+            LEFT JOIN violations v2 ON sv.second_offense_id = v2.violation_id
+            LEFT JOIN violations v3 ON sv.third_offense_id = v3.violation_id
+            WHERE sv.student_number IN ({','.join(['?'] * len(student_nums))})
+        """
+        headers, data = self.fetch_data(query, student_nums)
+        self.display_table_page("Student Violations", headers, data)
 
     def show_csh_table(self):
-        student_ids = self.fetch_student_ids()
-        if not student_ids:
-            QMessageBox.information(self, "Community Hours", "No community service records found.")
+        student_nums = self.fetch_student_nums()
+        if not student_nums:
+            QMessageBox.information(self, "Community Hours", "No CSH records found.")
             return
-        query = f"SELECT * FROM csh WHERE student_id IN ({','.join(['?'] * len(student_ids))})"
-        headers, data = self.fetch_data(query, student_ids)
-        self.show_table("Community Service Hours", headers, data)
 
-    def show_table(self, title, headers, data):
+        query = f"""
+            SELECT c.sv_id, sv.student_number, s.first_name, s.last_name,
+                   c.time_in, c.time_out, c.counselor_id, c.remarks
+            FROM csh c
+            JOIN student_violations sv ON c.sv_id = sv.sv_id
+            JOIN students s ON sv.student_number = s.student_num
+            WHERE sv.student_number IN ({','.join(['?'] * len(student_nums))})
+        """
+        headers, data = self.fetch_data(query, student_nums)
+        self.display_table_page("Community Service Hours", headers, data)
+
+    def display_table_page(self, title, headers, data):
+        page = QWidget()
+        layout = QVBoxLayout()
+        label = QLabel(title)
+        label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        layout.addWidget(label)
+
         table = QTableWidget()
         table.setColumnCount(len(headers))
         table.setRowCount(len(data))
@@ -432,10 +457,19 @@ class CounselorMenu(QWidget):
             for col_idx, value in enumerate(row_data):
                 table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
 
-        table.setWindowTitle(title)
-        table.resize(800, 400)
-        table.show()
-        self.table_window = table
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+
+        back_btn = QPushButton("Back")
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self))
+        layout.addWidget(back_btn)
+
+        page.setLayout(layout)
+        self.stacked_widget.addWidget(page)
+        self.stacked_widget.setCurrentWidget(page)
+
+
+
 
             
 class ViolationRecords(QWidget):
