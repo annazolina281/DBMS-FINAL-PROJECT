@@ -422,6 +422,53 @@ class ViolationRecords(QWidget):
             self.stacked_widget.setCurrentIndex(4)
             conn.close()
 
+class StudentViolations(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+        
+        self.sv_id = QLineEdit()
+        self.sv_id.setPlaceholderText("Enter S.V ID")
+        self.student_number = QLineEdit()
+        self.student_number.setPlaceholderText("Enter Student Number")
+        self.first_offense_id_= QLineEdit()
+        self.first_offense_id.setPlaceholderText("Enter First Offense")
+        
+        
+        submit_btn = QPushButton("Submit")
+        back_btn = QPushButton("Back")
+        
+        submit_btn.clicked.connect(self.add_violation)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
+        
+        layout.addWidget(QLabel("Violation Records"))
+        layout.addWidget(self.violation_id)
+        layout.addWidget(self.violation_name)
+        layout.addWidget(self.community_hours)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+                                 
+        
+    def add_violation(self):
+        viol_id = self.violation_id.text()
+        viol_name = self.violation_name.text()
+        comm_hours = self.community_hours.text()
+        conn = connect_to_community_db()
+        create_tables()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute(""" INSERT INTO violations 
+                           (violation_id, violation_name, community_hours)
+                           VALUES (?, ?, ?)
+                           """, (viol_id, viol_name, comm_hours))
+            conn.commit()
+            QMessageBox.information(self, "Success", "Violation added successfully!")
+            self.stacked_widget.setCurrentIndex(4)
+            conn.close()
+
+
 # Main Application
 app = QApplication(sys.argv)
 stacked_widget = QStackedWidget()
@@ -445,7 +492,8 @@ stacked_widget.addWidget(admin_ui)        # index 4
 stacked_widget.addWidget(student_record)  # index 5
 stacked_widget.addWidget(counselor_record) # index 6
 stacked_widget.addWidget(violations_record) # index 7
-# stacked_widget.addWidget(csh_record) index 8
+# stacked_widget.addWidget(student_violations) # index 8
+# stacked_widget.addWidget(csh_record) index 9
 
 stacked_widget.setFixedSize(400, 300)
 stacked_widget.setWindowTitle("Community Hours System")
