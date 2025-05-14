@@ -1,0 +1,798 @@
+import sys
+import pyodbc
+from datetime import datetime
+from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QLineEdit, 
+                            QVBoxLayout, QHBoxLayout, QMessageBox, QStackedWidget, 
+                            QTableWidget, QTableWidgetItem, QComboBox, QHeaderView)
+
+# Database connection setup
+def connect_to_db():
+    try:
+        conn = pyodbc.connect(
+            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'SERVER=LAPTOP-VUO9LL9V\\SQLEXPRESS01;'
+            'DATABASE=CommunityHoursDB;'
+            'Trusted_Connection=yes;'
+        )
+        return conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        return None
+
+# Base Window
+class RoleSelection(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Select Role:"))
+
+        student_btn = QPushButton("Student")
+        counselor_btn = QPushButton("Counselor")
+        admin_btn = QPushButton("Admin")
+
+        student_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(1))
+        counselor_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(2))
+        admin_btn.clicked.connect(lambda: stacked_widget.setCurrentIndex(3))
+
+        layout.addWidget(student_btn)
+        layout.addWidget(counselor_btn)
+        layout.addWidget(admin_btn)
+        self.setLayout(layout)
+
+class StudentPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+
+        self.id_input = QLineEdit()
+        self.id_input.setPlaceholderText("Enter Student Number")
+        submit_btn = QPushButton("Submit")
+        back_btn = QPushButton("Back")
+
+        submit_btn.clicked.connect(self.login)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        layout.addWidget(QLabel("Student Login"))
+        layout.addWidget(self.id_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def login(self):
+        student_number = self.id_input.text()
+        if not student_number:
+            QMessageBox.warning(self, "Error", "Please enter student number")
+            return
+
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            
+            # Check if student exists
+            cursor.execute("SELECT student_num FROM students WHERE student_num = ?", student_number)
+            if not cursor.fetchone():
+                QMessageBox.warning(self, "Error", "Student not found")
+                return
+
+            # Check if student has violations
+            cursor.execute("""
+                SELECT sv.sv_id, v1.community_hours + ISNULL(v2.community_hours, 0) + ISNULL(v3.community_hours, 0) as total_hours
+                FROM student_violations sv
+                LEFT JOIN violations v1 ON sv.first_offense_id = v1.violation_id
+                LEFT JOIN violations v2 ON sv.second_offense_id = v2.violation_id
+                LEFT JOIN violations v3 ON sv.third_offense_id = v3.violation_id
+                WHERE sv.student_number = ?
+            """, student_number)
+            
+            result = cursor.fetchone()
+            if not result:
+                QMessageBox.information(self, "No Violations", "Student has no recorded violations")
+                return
+
+            sv_id, total_hours = result
+            
+            # Check if student has remaining hours
+            if total_hours <= 0:
+                QMessageBox.information(self, "Completed", "Student has completed all community hours")
+                return
+
+            # Check for active session
+            cursor.execute("""
+                SELECT TOP 1 csh_id, time_in 
+                FROM csh 
+                WHERE sv_id = ? AND time_out IS NULL
+                ORDER BY time_in DESC
+            """, sv_id)
+            active_session = cursor.fetchone()
+
+            if active_session:
+                # Time out
+                csh_id, time_in = active_session
+                time_out = datetime.now()
+                duration = (time_out - time_in).total_seconds() / 3600.0
+
+                cursor.execute("""
+                    UPDATE csh 
+                    SET time_out = ?, remarks = 'Completed' 
+                    WHERE csh_id = ?
+                """, (time_out, csh_id))
+
+                QMessageBox.information(self, "Timed Out", 
+                    f"Time-out recorded. {duration:.2f} hours completed.")
+            else:
+                # Time in
+                time_in = datetime.now()
+                cursor.execute("""
+                    INSERT INTO csh (sv_id, time_in, remarks) 
+                    VALUES (?, ?, 'In Progress')
+                """, (sv_id, time_in))
+                QMessageBox.information(self, "Timed In", "Time-in recorded successfully.")
+
+            conn.commit()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+        finally:
+            conn.close()
+
+# Counselor Page
+class CounselorPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+
+        self.id_input = QLineEdit()
+        self.id_input.setPlaceholderText("Enter Counselor ID")
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText("Enter Password")
+        self.pass_input.setEchoMode(QLineEdit.Password)
+
+        submit_btn = QPushButton("Login")
+        back_btn = QPushButton("Back")
+
+        submit_btn.clicked.connect(self.login)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        layout.addWidget(QLabel("Counselor Login"))
+        layout.addWidget(self.id_input)
+        layout.addWidget(self.pass_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def login(self):
+        counselor_id = self.id_input.text()
+        password = self.pass_input.text()
+        
+        if not counselor_id or not password:
+            QMessageBox.warning(self, "Error", "Please enter both ID and password")
+            return
+
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT department_1, department_2 FROM counselors WHERE counselor_id = ? AND password = ?",
+                (counselor_id, password)
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                dept1, dept2 = result
+                departments = [d for d in [dept1, dept2] if d]
+                QMessageBox.information(self, "Success", "Login successful!")
+                
+                # Create and show counselor menu
+                counselor_menu = CounselorMenu(self.stacked_widget, departments)
+                self.stacked_widget.addWidget(counselor_menu)
+                self.stacked_widget.setCurrentWidget(counselor_menu)
+            else:
+                QMessageBox.warning(self, "Failed", "Invalid credentials.")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Login error: {e}")
+        finally:
+            conn.close()
+
+class CounselorMenu(QWidget):
+    def __init__(self, stacked_widget, departments):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.departments = departments
+
+        layout = QVBoxLayout()
+        self.students_btn = QPushButton("View Students")
+        self.violations_btn = QPushButton("View Violations")
+        self.csh_btn = QPushButton("View Community Hours")
+        back_btn = QPushButton("Back")
+
+        self.students_btn.clicked.connect(self.show_students_table)
+        self.violations_btn.clicked.connect(self.show_violations_table)
+        self.csh_btn.clicked.connect(self.show_csh_table)
+        back_btn.clicked.connect(self.go_back)
+
+        layout.addWidget(QLabel(f"Counselor View - Programs: {', '.join(self.departments)}"))
+        layout.addWidget(self.students_btn)
+        layout.addWidget(self.violations_btn)
+        layout.addWidget(self.csh_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def go_back(self):
+        # Remove this widget from stacked widget before going back
+        self.stacked_widget.removeWidget(self)
+        self.stacked_widget.setCurrentIndex(0)
+
+    def fetch_data(self, query, params=None):
+        conn = connect_to_db()
+        if not conn:
+            return None, None
+            
+        try:
+            cursor = conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+                
+            data = cursor.fetchall()
+            headers = [column[0] for column in cursor.description]
+            return headers, data
+        except Exception as e:
+            print(f"Database error: {e}")
+            return None, None
+        finally:
+            conn.close()
+
+    def show_students_table(self):
+        placeholders = ','.join(['?'] * len(self.departments))
+        query = f"""
+            SELECT student_num, first_name, last_name, program 
+            FROM students 
+            WHERE program IN ({placeholders})
+        """
+        headers, data = self.fetch_data(query, self.departments)
+        if headers and data:
+            self.display_table("Students", headers, data)
+        else:
+            QMessageBox.information(self, "No Data", "No students found in your departments")
+
+    def show_violations_table(self):
+        placeholders = ','.join(['?'] * len(self.departments))
+        query = f"""
+            SELECT sv.sv_id, s.student_num, s.first_name, s.last_name, 
+                   v1.violation_name as first_offense, 
+                   v2.violation_name as second_offense, 
+                   v3.violation_name as third_offense,
+                   v1.community_hours + ISNULL(v2.community_hours, 0) + ISNULL(v3.community_hours, 0) as total_hours
+            FROM student_violations sv
+            JOIN students s ON sv.student_number = s.student_num
+            LEFT JOIN violations v1 ON sv.first_offense_id = v1.violation_id
+            LEFT JOIN violations v2 ON sv.second_offense_id = v2.violation_id
+            LEFT JOIN violations v3 ON sv.third_offense_id = v3.violation_id
+            WHERE s.program IN ({placeholders})
+        """
+        headers, data = self.fetch_data(query, self.departments)
+        if headers and data:
+            self.display_table("Student Violations", headers, data)
+        else:
+            QMessageBox.information(self, "No Data", "No violations found in your departments")
+
+    def show_csh_table(self):
+        placeholders = ','.join(['?'] * len(self.departments))
+        query = f"""
+            SELECT c.csh_id, s.student_num, s.first_name, s.last_name, 
+                   c.time_in, c.time_out, c.counselor_id, c.remarks,
+                   DATEDIFF(MINUTE, c.time_in, ISNULL(c.time_out, GETDATE()))/60.0 as hours_completed
+            FROM csh c
+            JOIN student_violations sv ON c.sv_id = sv.sv_id
+            JOIN students s ON sv.student_number = s.student_num
+            WHERE s.program IN ({placeholders})
+            ORDER BY c.time_in DESC
+        """
+        headers, data = self.fetch_data(query, self.departments)
+        if headers and data:
+            self.display_table("Community Service Hours", headers, data)
+        else:
+            QMessageBox.information(self, "No Data", "No community hours records found")
+
+    def display_table(self, title, headers, data):
+        page = QWidget()
+        layout = QVBoxLayout()
+        
+        # Title
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title_label)
+
+        # Table
+        table = QTableWidget()
+        table.setColumnCount(len(headers))
+        table.setRowCount(len(data))
+        table.setHorizontalHeaderLabels(headers)
+        
+        # Populate table
+        for row_idx, row_data in enumerate(data):
+            for col_idx, cell_data in enumerate(row_data):
+                item = QTableWidgetItem(str(cell_data) if cell_data is not None else "")
+                table.setItem(row_idx, col_idx, item)
+        
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(table)
+
+        # Back button
+        back_btn = QPushButton("Back")
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self))
+        layout.addWidget(back_btn)
+
+        page.setLayout(layout)
+        
+        # Add to stacked widget and show
+        self.stacked_widget.addWidget(page)
+        self.stacked_widget.setCurrentWidget(page)
+
+# Admin Page
+class AdminPage(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        layout = QVBoxLayout()
+
+        self.id_input = QLineEdit()
+        self.id_input.setPlaceholderText("Enter Admin ID")
+        self.pass_input = QLineEdit()
+        self.pass_input.setPlaceholderText("Enter Password")
+        self.pass_input.setEchoMode(QLineEdit.Password)
+
+        submit_btn = QPushButton("Login")
+        back_btn = QPushButton("Back")
+
+        submit_btn.clicked.connect(self.login)
+        back_btn.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+
+        layout.addWidget(QLabel("Admin Login"))
+        layout.addWidget(self.id_input)
+        layout.addWidget(self.pass_input)
+        layout.addWidget(submit_btn)
+        layout.addWidget(back_btn)
+        self.setLayout(layout)
+
+    def login(self):
+        admin_id = self.id_input.text()
+        password = self.pass_input.text()
+        
+        if not admin_id or not password:
+            QMessageBox.warning(self, "Error", "Please enter both ID and password")
+            return
+
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT admin_name FROM admins WHERE admin_id = ? AND password = ?",
+                (admin_id, password)
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                admin_name = result[0]
+                QMessageBox.information(self, "Success", f"Welcome, {admin_name}!")
+                
+                # Create and show admin menu
+                admin_menu = AdminMenu(self.stacked_widget)
+                self.stacked_widget.addWidget(admin_menu)
+                self.stacked_widget.setCurrentWidget(admin_menu)
+            else:
+                QMessageBox.warning(self, "Failed", "Invalid credentials.")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Login error: {e}")
+        finally:
+            conn.close()
+
+class AdminMenu(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        
+        layout = QVBoxLayout()
+
+        student_records_btn = QPushButton("Manage Student Records")
+        counselor_records_btn = QPushButton("Manage Counselor Records")
+        violations_records_btn = QPushButton("Manage Violation Records")
+        student_violations_btn = QPushButton("Manage Student Violations")
+        csh_records_btn = QPushButton("Manage Community Hours")
+        back_btn = QPushButton("Back")
+
+        student_records_btn.clicked.connect(lambda: self.show_management_page("students"))
+        counselor_records_btn.clicked.connect(lambda: self.show_management_page("counselors"))
+        violations_records_btn.clicked.connect(lambda: self.show_management_page("violations"))
+        student_violations_btn.clicked.connect(lambda: self.show_management_page("student_violations"))
+        csh_records_btn.clicked.connect(lambda: self.show_management_page("csh"))
+        back_btn.clicked.connect(self.go_back)
+
+        layout.addWidget(QLabel("Admin Menu"))
+        layout.addWidget(student_records_btn)
+        layout.addWidget(counselor_records_btn)
+        layout.addWidget(violations_records_btn)
+        layout.addWidget(student_violations_btn)
+        layout.addWidget(csh_records_btn)
+        layout.addWidget(back_btn)
+        
+        self.setLayout(layout)
+
+    def go_back(self):
+        # Remove this widget from stacked widget before going back
+        self.stacked_widget.removeWidget(self)
+        self.stacked_widget.setCurrentIndex(0)
+
+    def show_management_page(self, table_name):
+        management_page = ManagementPage(self.stacked_widget, table_name)
+        self.stacked_widget.addWidget(management_page)
+        self.stacked_widget.setCurrentWidget(management_page)
+
+class ManagementPage(QWidget):
+    def __init__(self, stacked_widget, table_name):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.table_name = table_name
+        self.setup_ui()
+        self.load_data()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Title
+        title = self.table_name.replace('_', ' ').title()
+        self.title_label = QLabel(f"Manage {title}")
+        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(self.title_label)
+
+        # Table view
+        self.table = QTableWidget()
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        layout.addWidget(self.table)
+
+        # Form for add/edit
+        self.form_layout = QVBoxLayout()
+        self.input_widgets = {}
+        
+        # Different forms for different tables
+        if self.table_name == "students":
+            self.setup_student_form()
+        elif self.table_name == "counselors":
+            self.setup_counselor_form()
+        elif self.table_name == "violations":
+            self.setup_violation_form()
+        elif self.table_name == "student_violations":
+            self.setup_student_violation_form()
+        elif self.table_name == "csh":
+            self.setup_csh_form()
+            
+        layout.addLayout(self.form_layout)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.add_btn = QPushButton("Add")
+        self.edit_btn = QPushButton("Edit")
+        self.delete_btn = QPushButton("Delete")
+        self.clear_btn = QPushButton("Clear")
+        back_btn = QPushButton("Back")
+
+        self.add_btn.clicked.connect(self.add_record)
+        self.edit_btn.clicked.connect(self.edit_record)
+        self.delete_btn.clicked.connect(self.delete_record)
+        self.clear_btn.clicked.connect(self.clear_form)
+        back_btn.clicked.connect(self.go_back)
+
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addWidget(self.edit_btn)
+        btn_layout.addWidget(self.delete_btn)
+        btn_layout.addWidget(self.clear_btn)
+        btn_layout.addWidget(back_btn)
+        layout.addLayout(btn_layout)
+
+        self.setLayout(layout)
+
+    def setup_student_form(self):
+        self.input_widgets = {
+            "student_num": QLineEdit(),
+            "first_name": QLineEdit(),
+            "last_name": QLineEdit(),
+            "program": QLineEdit()
+        }
+        
+        for field, widget in self.input_widgets.items():
+            self.form_layout.addWidget(QLabel(field.replace('_', ' ').title()))
+            self.form_layout.addWidget(widget)
+
+    def setup_counselor_form(self):
+        self.input_widgets = {
+            "counselor_id": QLineEdit(),
+            "department_1": QLineEdit(),
+            "department_2": QLineEdit(),
+            "password": QLineEdit()
+        }
+        self.input_widgets["password"].setEchoMode(QLineEdit.Password)
+        
+        for field, widget in self.input_widgets.items():
+            self.form_layout.addWidget(QLabel(field.replace('_', ' ').title()))
+            self.form_layout.addWidget(widget)
+
+    def setup_violation_form(self):
+        self.input_widgets = {
+            "violation_name": QLineEdit(),
+            "community_hours": QLineEdit()
+        }
+        
+        for field, widget in self.input_widgets.items():
+            self.form_layout.addWidget(QLabel(field.replace('_', ' ').title()))
+            self.form_layout.addWidget(widget)
+
+    def setup_student_violation_form(self):
+        # For student violations, we need to handle foreign keys
+        self.input_widgets = {
+            "sv_id": QLineEdit(),
+            "student_number": QLineEdit(),
+            "first_offense_id": QComboBox(),
+            "second_offense_id": QComboBox(),
+            "third_offense_id": QComboBox()
+        }
+        
+        # Load violations for comboboxes
+        conn = connect_to_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT violation_id, violation_name FROM violations")
+                violations = cursor.fetchall()
+                
+                for offense in ["first_offense_id", "second_offense_id", "third_offense_id"]:
+                    combo = self.input_widgets[offense]
+                    combo.addItem("None", None)
+                    for violation_id, violation_name in violations:
+                        combo.addItem(f"{violation_id}: {violation_name}", violation_id)
+                        
+            except Exception as e:
+                print(f"Error loading violations: {e}")
+            finally:
+                conn.close()
+        
+        for field, widget in self.input_widgets.items():
+            self.form_layout.addWidget(QLabel(field.replace('_', ' ').title()))
+            self.form_layout.addWidget(widget)
+
+    def setup_csh_form(self):
+        self.input_widgets = {
+            "csh_id": QLineEdit(),
+            "sv_id": QLineEdit(),
+            "time_in": QLineEdit(),
+            "time_out": QLineEdit(),
+            "counselor_id": QLineEdit(),
+            "remarks": QLineEdit()
+        }
+        
+        for field, widget in self.input_widgets.items():
+            self.form_layout.addWidget(QLabel(field.replace('_', ' ').title()))
+            self.form_layout.addWidget(widget)
+
+    def load_data(self):
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            
+            # Basic select query
+            query = f"SELECT * FROM {self.table_name}"
+            cursor.execute(query)
+            
+            # Get data and headers
+            data = cursor.fetchall()
+            headers = [column[0] for column in cursor.description]
+            
+            # Populate table
+            self.table.setColumnCount(len(headers))
+            self.table.setRowCount(len(data))
+            self.table.setHorizontalHeaderLabels(headers)
+            
+            for row_idx, row in enumerate(data):
+                for col_idx, value in enumerate(row):
+                    self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value) if value is not None else ""))
+            
+            self.table.resizeColumnsToContents()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load data: {e}")
+        finally:
+            conn.close()
+
+    def add_record(self):
+        # Get values from input widgets
+        values = {}
+        for field, widget in self.input_widgets.items():
+            if isinstance(widget, QComboBox):
+                values[field] = widget.currentData()
+            else:
+                values[field] = widget.text()
+        
+        # Validate required fields
+        if self.table_name == "students":
+            if not all([values["student_num"], values["first_name"], values["last_name"], values["program"]]):
+                QMessageBox.warning(self, "Error", "All fields are required for students")
+                return
+        
+        # Prepare SQL query
+        columns = ', '.join(values.keys())
+        placeholders = ', '.join(['?'] * len(values))
+        query = f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})"
+        
+        # Execute query
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, list(values.values()))
+            conn.commit()
+            QMessageBox.information(self, "Success", "Record added successfully")
+            self.load_data()
+            self.clear_form()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add record: {e}")
+        finally:
+            conn.close()
+
+    def edit_record(self):
+        selected_row = self.table.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Error", "Please select a record to edit")
+            return
+        
+        # Get primary key value from the selected row
+        pk_column = self.table.horizontalHeaderItem(0).text()
+        pk_value = self.table.item(selected_row, 0).text()
+        
+        # Get updated values from input widgets
+        updates = []
+        values = []
+        for col in range(self.table.columnCount()):
+            header = self.table.horizontalHeaderItem(col).text()
+            if header == pk_column:
+                continue  # Don't update primary key
+                
+            widget = self.input_widgets.get(header)
+            if widget:
+                if isinstance(widget, QComboBox):
+                    new_value = widget.currentData()
+                else:
+                    new_value = widget.text()
+                
+                updates.append(f"{header} = ?")
+                values.append(new_value)
+        
+        if not updates:
+            QMessageBox.warning(self, "Error", "No fields to update")
+            return
+            
+        # Add primary key value to the end for WHERE clause
+        values.append(pk_value)
+        
+        # Prepare and execute update query
+        query = f"UPDATE {self.table_name} SET {', '.join(updates)} WHERE {pk_column} = ?"
+        
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, values)
+            conn.commit()
+            QMessageBox.information(self, "Success", "Record updated successfully")
+            self.load_data()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to update record: {e}")
+        finally:
+            conn.close()
+
+    def delete_record(self):
+        selected_row = self.table.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Error", "Please select a record to delete")
+            return
+        
+        # Get primary key value from the selected row
+        pk_column = self.table.horizontalHeaderItem(0).text()
+        pk_value = self.table.item(selected_row, 0).text()
+        
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self, 'Confirm Delete', 
+            f'Are you sure you want to delete this record?', 
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.No:
+            return
+            
+        # Prepare and execute delete query
+        query = f"DELETE FROM {self.table_name} WHERE {pk_column} = ?"
+        
+        conn = connect_to_db()
+        if not conn:
+            QMessageBox.critical(self, "Error", "Database connection failed.")
+            return
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, pk_value)
+            conn.commit()
+            QMessageBox.information(self, "Success", "Record deleted successfully")
+            self.load_data()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete record: {e}")
+        finally:
+            conn.close()
+
+    def clear_form(self):
+        for widget in self.input_widgets.values():
+            if isinstance(widget, QLineEdit):
+                widget.clear()
+            elif isinstance(widget, QComboBox):
+                widget.setCurrentIndex(0)
+
+    def go_back(self):
+        # Remove this widget from stacked widget before going back
+        self.stacked_widget.removeWidget(self)
+        self.stacked_widget.setCurrentIndex(4)  # Back to admin menu
+
+# Main Application
+def main():
+    app = QApplication(sys.argv)
+    stacked_widget = QStackedWidget()
+
+    # Create pages
+    role_selection = RoleSelection(stacked_widget)
+    student_page = StudentPage(stacked_widget)
+    counselor_page = CounselorPage(stacked_widget)
+    admin_page = AdminPage(stacked_widget)
+    admin_menu = AdminMenu(stacked_widget)
+
+    # Add pages to stacked widget
+    stacked_widget.addWidget(role_selection)  # index 0
+    stacked_widget.addWidget(student_page)    # index 1
+    stacked_widget.addWidget(counselor_page)  # index 2
+    stacked_widget.addWidget(admin_page)      # index 3
+    stacked_widget.addWidget(admin_menu)      # index 4
+
+    stacked_widget.setFixedSize(800, 600)
+    stacked_widget.setWindowTitle("Community Hours System")
+    stacked_widget.show()
+
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
